@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SenseCraft Cockpit</title>
+  
+  <!-- SenseCraft UI Tokens (Aligned with @suharvest/ui-kit v0.1.7) -->
+  <link rel="stylesheet" href="./src/theme/tokens.css">
+  
+  <!-- Leaflet CSS & JS (Offline CDN with Local Vendor fallback) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Protomaps Leaflet for offline PMTiles -->
+  <script src="https://unpkg.com/protomaps-leaflet@4.0.1/dist/protomaps-leaflet.min.js"></script>
+</head>
+<body style="min-height: 100vh; display: flex; flex-direction: column;">
+
+  <!-- Header / Navigation Bar (SenseCraft AppShell Header) -->
+  <header style="
+    height: var(--sc-layout-header-height);
+    background: var(--sc-color-bg-container);
+    border-bottom: 1px solid var(--sc-color-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--sc-layout-content-padding);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  ">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div style="
+        width: 32px;
+        height: 32px;
+        background: var(--sc-color-primary);
+        border-radius: var(--sc-radius-base);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 800;
+        font-size: 16px;
+      ">S</div>
+      <div>
+        <h1 id="app-title" style="margin: 0; font-size: 18px; font-weight: 700; color: var(--sc-color-text);">SenseCraft Cockpit</h1>
+      </div>
+      <span class="sc-status-badge sc-status-normal" id="mode-badge" style="margin-left: 8px;">
+        ● 演示模拟模式
+      </span>
+    </div>
+
+    <!-- Right Actions / Controls -->
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div style="font-size: 13px; color: var(--sc-color-text-secondary);">
+        <span id="storage-label-text">存储后端</span>: <strong id="storage-badge" style="color: var(--sc-color-primary-dark);">本地轻量时序 (SQLite)</strong>
+      </div>
+      <div style="display: flex; gap: 6px;">
+        <button type="button" onclick="window.switchLang('zh')" style="padding: 4px 10px; font-family: inherit; font-size: 12px; border: 1px solid var(--sc-color-border); border-radius: var(--sc-radius-sm); background: var(--sc-color-bg-container); color: var(--sc-color-text); cursor: pointer;">中文</button>
+        <button type="button" onclick="window.switchLang('en')" style="padding: 4px 10px; font-family: inherit; font-size: 12px; border: 1px solid var(--sc-color-border); border-radius: var(--sc-radius-sm); background: var(--sc-color-bg-container); color: var(--sc-color-text); cursor: pointer;">English</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main style="flex: 1; padding: var(--sc-layout-content-padding); max-width: 1440px; margin: 0 auto; width: calc(100% - 48px); box-sizing: border-box;">
+    
+    <!-- Top Row: Real-time Telemetry Metrics -->
+    <section style="margin-bottom: 24px;">
+      <h3 id="telemetry-title" style="font-size: 15px; font-weight: 600; margin: 0 0 16px 0; color: var(--sc-color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
+        实时态势感知矩阵
+      </h3>
+      <div id="metrics-grid" style="
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 16px;
+      ">
+        <!-- Rendered dynamically by main.js -->
+      </div>
+    </section>
+
+    <!-- Middle Row: Offline Map + Two-Phase Control Center -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px;">
+      
+      <!-- Left: Offline Map Viewport -->
+      <section style="
+        background: var(--sc-color-bg-container);
+        border: 1px solid var(--sc-color-border);
+        border-radius: var(--sc-radius-lg);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        height: 480px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      ">
+        <div style="padding: 16px 20px; border-bottom: 1px solid var(--sc-color-border); display: flex; justify-content: space-between; align-items: center;">
+          <span id="map-header-title" style="font-weight: 600; font-size: 15px; color: var(--sc-color-text);">🗺️ 现场离线态势底图 (PMTiles Range 加载)</span>
+          <span class="sc-status-badge sc-status-warning" id="map-status-badge">探测中...</span>
+        </div>
+        <div id="map-viewport" style="flex: 1; width: 100%; height: 100%; min-height: 400px;"></div>
+      </section>
+
+      <!-- Right: Disaster Control Center (Two-Phase Verification) -->
+      <section style="display: flex; flex-direction: column; gap: 16px;">
+        <div id="control-header-title" style="font-weight: 600; font-size: 15px; color: var(--sc-color-text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
+          物理继电器与执行机构 (两段式确认)
+        </div>
+        <div id="controls-grid" style="display: flex; flex-direction: column; gap: 14px;">
+          <!-- Rendered dynamically by main.js -->
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Bottom Audit Banner -->
+    <footer style="
+      background: var(--sc-status-disabled-bg);
+      border: 1px solid var(--sc-color-border);
+      border-radius: var(--sc-radius-md);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--sc-color-text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    ">
+      <span>🛡️</span>
+      <span id="audit-note">物理操作硬审计已写入本地 SQLite WAL，断电与离网下保证状态追溯与幂等。</span>
+    </footer>
+
+  </main>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
