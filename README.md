@@ -1,8 +1,8 @@
-# SenseCraft Vibe Cockpit Template
+# SenseCraft Emergency Response Cockpit (emergency-response-cockpit)
 
-面向环境监测、离网防灾与科技平权项目的**单一开箱即用驾驶舱前端模板**。
+面向快速搭建应急响应与防灾监控看板、离网环境与科技平权项目的**单一开箱即用驾驶舱前端模板**。
 
-遵循 **SenseCraft UI** 统一设计规范（@suharvest/ui-kit 设计 Tokens），专为边缘工业网关（reComputer R1100 / R1000）与完全离网现场定制。
+遵循 **SenseCraft UI** 统一设计规范（@suharvest/ui-kit 设计 Tokens），专为边缘工业网关（reComputer R1100 / R1000）与完全离网现场定制，用于快速搭建应急响应与防灾监控看板。
 
 ---
 
@@ -50,7 +50,7 @@ npm run dev
 ## 目录结构
 
 ```
-vibe-cockpit-template/
+emergency-response-cockpit/
 ├── index.html                  # 页面主入口 (SenseCraft AppShell 布局)
 ├── package.json
 ├── README.md

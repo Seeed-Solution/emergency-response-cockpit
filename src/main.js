@@ -1,5 +1,5 @@
 /**
- * SenseCraft Vibe Cockpit Main Application Entry.
+ * SenseCraft Emergency Response Cockpit Main Application Entry.
  * Integrates Telemetry Metrics, Offline PMTiles Map, and Two-Phase Controls with Race-Condition Guards.
  */
 

@@ -1,7 +1,7 @@
 {
-  "name": "@sensecraft/vibe-cockpit-template",
+  "name": "emergency-response-cockpit",
   "version": "1.0.0",
-  "description": "SenseCraft Vibe Cockpit Template for Environmental Monitoring & Disaster Response",
+  "description": "Lightweight, off-grid emergency response cockpit template aligned with SenseCraft-UI",
   "type": "module",
   "scripts": {
     "dev": "vite",

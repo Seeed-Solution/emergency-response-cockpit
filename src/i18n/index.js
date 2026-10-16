@@ -5,7 +5,7 @@
 
 const DICTIONARY = {
   zh: {
-    appTitle: "SenseCraft 离网防灾与环境监测驾驶舱",
+    appTitle: "SenseCraft 应急响应与离网防灾驾驶舱",
     systemHealthy: "系统运转正常",
     storageLabel: "存储后端",
     storageMode: "存储后端",
@@ -65,7 +65,7 @@ const DICTIONARY = {
     markerNode3Val: "就绪 (待命)",
   },
   en: {
-    appTitle: "SenseCraft Off-Grid Disaster & Environmental Cockpit",
+    appTitle: "SenseCraft Emergency Response Cockpit",
     systemHealthy: "All Systems Operational",
     storageLabel: "Storage Backend",
     storageMode: "Storage Backend",
