@@ -47,6 +47,17 @@ npm run dev
 
 ---
 
+## Examples / 行业示例
+
+针对特定工业与离网应用场景，本仓库提供官方自包含落地示例：
+
+- [**examples/agri-env-ops**](examples/agri-env-ops/README.md)：**智慧农业气象与离网巡田监控看板**
+  - **核心场景**：农田多合一气象站微气候（温湿度、风玫瑰、雨量、气压）、大棚土壤墒情监测（土壤温湿度、EC 电导率），以及巡检人员手持 Meshtastic LoRa Mesh 电台离网通信与定位追踪；
+  - **边缘网关协同**：深度适配 `missionpack-knn` 边缘网关，消费 SenseCAP 协议与 MQTT `agri_env/+/+/state` 标准化时序契约；
+  - **极速体验**：提供轻量 Python 桥接服务与内置 Demo 仿真器（`python3 bridge.py --demo`），支持主 Operations 看板、现场 Kiosk 大屏与诊断视图，亦可使用 Docker Compose 快速部署。
+
+---
+
 ## 目录结构
 
 ```
@@ -54,14 +65,16 @@ emergency-response-cockpit/
 ├── index.html                  # 页面主入口 (SenseCraft AppShell 布局)
 ├── package.json
 ├── README.md
-└── src/
-    ├── main.js                 # 核心数据编排与控制交互调度
-    ├── theme/
-    │   └── tokens.css          # SenseCraft UI 官方设计 Token
-    ├── i18n/
-    │   └── index.js            # 双语字典 (zh/en) 与语言归一
-    └── components/
-        ├── MetricCard.js       # 工业测点指标卡 (四态状态)
-        ├── TwoPhaseControlButton.js # 两段式物理控制按钮
-        └── OfflineMapView.js   # PMTiles 离线矢量地图挂载
+├── src/
+│   ├── main.js                 # 核心数据编排与控制交互调度
+│   ├── theme/
+│   │   └── tokens.css          # SenseCraft UI 官方设计 Token
+│   ├── i18n/
+│   │   └── index.js            # 双语字典 (zh/en) 与语言归一
+│   └── components/
+│       ├── MetricCard.js       # 工业测点指标卡 (四态状态)
+│       ├── TwoPhaseControlButton.js # 两段式物理控制按钮
+│       └── OfflineMapView.js   # PMTiles 离线矢量地图挂载
+└── examples/
+    └── agri-env-ops/           # 智慧农业微气象、土壤墒情与 Meshtastic 离网巡田看板示例
 ```
