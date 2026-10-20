@@ -3,43 +3,55 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-8CC020.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Edge%20%7C%20Browser%20%7C%20Linux-blue.svg)](#supported-hardware--ecosystem)
 [![Architecture](https://img.shields.io/badge/Architecture-Zero%20Heavy%20Framework-success.svg)](#system-architecture)
-[![Map](https://img.shields.io/badge/Map-PMTiles%20Offline-orange.svg)](#features)
+[![Map](https://img.shields.io/badge/Map-PMTiles%20Offline-orange.svg)](#offline-map-configuration-pmtiles)
 [![UI](https://img.shields.io/badge/UI-SenseCraft--UI%20Tokens-8CC020.svg)](#features)
 
 Lightweight, off-grid emergency response and disaster resilience cockpit template aligned with SenseCraft-UI. Designed for edge gateways (reComputer R1000/R1100/R12, Raspberry Pi) and zero-internet field operations.
 
-[English](#features) | [中文说明](#中文导读)
+English | [简体中文](README.zh-CN.md)
 
 ---
 
 ## System Architecture
 
+The cockpit operates not as an isolated web UI, but as the operational presentation layer deeply integrated with Seeed's Multi-Protocol Edge Gateway Engine (e.g., `missionpack-knn` on reComputer industrial gateways). The end-to-end architecture connects field sensing, off-grid mesh communication, two-phase physical actuation, and client-side offline GIS rendering:
+
 ```mermaid
 flowchart TD
-    subgraph Perception["1. Physical Perception & Field Nodes"]
-        Sensors["SenseCAP Sensors<br>(LoRaWAN / RS485 Soil & Microclimate)"]
-        Patrol["Field Patrol Radio<br>(Meshtastic T1000-E / Heltec LoRa)"]
+    subgraph Perception["1. Physical Perception & Field Transceivers"]
+        Sensors["SenseCAP Sensor Nodes<br>(S2100 Weather Station / 8-in-1 / Soil Moisture & EC)"]
+        Patrol["Field Patrol Mesh Radios<br>(Meshtastic T1000-E Tracker / Heltec / ESP32)"]
+        Actuators["Emergency Actuators<br>(Industrial Relays / Valves / Ventilation / Sirens)"]
     end
 
-    subgraph Gateway["2. Edge Gateway Layer (reComputer R1000 / R1100 / R12)"]
-        Mosquitto["Mosquitto MQTT Broker<br>(Standard Telemetry Contract)"]
-        Parser["Protocol Ingestion & Control Engine<br>(SenseCAP Parser & Two-Phase State Machine)"]
-        Storage["Storage Sink<br>(none / SQLite WAL / TDengine)"]
+    subgraph Gateway["2. Multi-Protocol Edge Gateway Engine (missionpack-knn / reComputer)"]
+        SenseCAPParser["SenseCAP Parser<br>(6-Byte Binary Telemetry Decoder)"]
+        MeshDriver["Meshtastic Mesh Driver<br>(NodeDB, GPS & Link RF ACK)"]
+        StateMachine["Two-Phase State Engine<br>(SENT -> DELIVERED -> APPLIED)"]
+        AuditLog["SQLite WAL Audit Log<br>(Append-Only Action History)"]
+        DataBus["Mosquitto MQTT Data Bus<br>(Normalized Topic Contract: agri_env/+/+/state)"]
+        StorageSinks["Pluggable Storage Sinks<br>(none / SQLite WAL / TDengine)"]
     end
 
     subgraph Frontend["3. Emergency Cockpit Frontend (Static / Zero-Build)"]
         WebServer["Static WebServer / Nginx<br>(HTTP 206 Partial Content)"]
-        PMTiles["PMTiles Offline Basemap<br>(HTTP Range Requests, Zero External GIS)"]
-        StateMachine["Two-Phase Confirmation Machine<br>(SENT -> DELIVERED -> APPLIED)"]
+        PMTiles["PMTiles Offline Basemap<br>(HTTP Range Requests, 0x4D50 Magic Byte)"]
+        ControlUI["Two-Phase Control UI<br>(Mutex In-Flight & statusUnknown Escalation)"]
         Telemetry["4-State Telemetry Badges<br>(normal / warning / danger / disabled)"]
     end
 
-    Sensors -->|LoRaWAN / RS485| Parser
-    Patrol <-->|LoRa Mesh RF ACK & Telemetry| Parser
-    Parser -->|agri_env/+/+/state| Mosquitto
-    Mosquitto --> Storage
-    Mosquitto <-->|MQTT / WebSocket / REST| StateMachine
-    Mosquitto -->|Real-time Metrics| Telemetry
+    Sensors -->|LoRaWAN / RS485 Modbus| SenseCAPParser
+    Patrol <-->|LoRa Mesh RF Packets & ACKs| MeshDriver
+    Actuators <-->|Contact / Pin Readback| StateMachine
+
+    SenseCAPParser --> DataBus
+    MeshDriver --> DataBus
+    DataBus <--> StateMachine
+    StateMachine --> AuditLog
+    DataBus --> StorageSinks
+
+    DataBus <-->|MQTT / WebSocket| ControlUI
+    DataBus -->|Real-time Stream| Telemetry
     WebServer -->|Byte Range Requests| PMTiles
 ```
 
@@ -58,8 +70,8 @@ flowchart TD
    - Built-in preflight magic byte check (`0x4D50`) with graceful fallback to OpenStreetMap when online or to tabular marker lists.
 
 3. **Two-Phase Physical Control Confirmation State Machine**
-   - Prevents optimistic, unconfirmed control feedback in safety-critical operations.
-   - **Phase 1: `SENT`**: Local dispatch confirmed from edge gateway to outbound radio link.
+   - Eliminates optimistic false-success feedback in safety-critical operations.
+   - **Phase 1: `SENT`**: Local dispatch confirmed from edge gateway to outbound radio/bus link.
    - **Phase 2: `DELIVERED`**: Remote transceiver delivery confirmed via Meshtastic LoRa RF ACK packet.
    - **Phase 3: `APPLIED`**: Actuator physical pin / contact readback confirmed to complete the loop.
    - Timeout escalation transitions commands to `statusUnknown` warning state, accompanied by persistent append-only WAL audit logging on the gateway.
@@ -68,9 +80,67 @@ flowchart TD
    - Compatible with gateway `STORAGE_BACKEND` modes: `none` (pure stream pass-through), `sqlite` (local cyclic cache with WAL), or `tdengine` (centralized time-series cluster).
    - Frontend auto-adapts status display and subscriptions based on detected backend capability.
 
-5. **Zero Heavy Framework**
+5. **Zero Heavy Framework & Edge Optimized**
    - Implemented in native ECMAScript modules and vanilla CSS.
-   - Requires no Node.js compilation pipeline for production serving; deployable as static assets on minimal web servers.
+   - Requires no Node.js compilation pipeline for production serving; deployable as static assets on minimal web servers (few tens of MBs RAM footprint).
+
+---
+
+## Multi-Protocol Edge Gateway Integration
+
+The cockpit is engineered to interface directly with Seeed edge multi-protocol gateway software bases (such as `missionpack-knn` running on reComputer industrial edge controllers). The gateway serves as the physical mediation layer between disparate field hardware and the unified cockpit telemetry bus via 5 core architectural mechanisms:
+
+### 1. SenseCAP Sensor Protocol Adapter
+- **6-Byte Binary Measurement Parsing**: Decodes industrial binary streams where telemetry measurements follow fixed 6-byte blocks (`Measurement ID` [2 bytes] + `Measurement Value` [4 bytes, IEEE 754 float or signed integer]), strictly aligned with Seeed SenseCAP standard data definitions.
+- **Hardware Profile Alignment**: Direct out-of-the-box decoders for SenseCAP S2100 data loggers, 8-in-1 compact weather stations, multi-depth soil moisture/temperature/electrical conductivity (EC) sensors, and PAR light intensity instruments.
+- **Dual Transport Ingestion**: Ingests sensor data over both ChirpStack v4 LoRaWAN uplinks and industrial RS485 Modbus RTU buses simultaneously.
+- **Fault-Isolated Parsing**: Implements per-metric error isolation, monotonic millisecond timestamp alignment, and anti-drift validation to ensure corrupted telemetry packets never disrupt adjacent channels.
+
+### 2. Meshtastic LoRa Mesh Off-Grid Communication Driver
+- **Zero-Cellular Field Coordination**: Establishes reliable communication across rugged terrain, dense forests, or disaster zones without cellular infrastructure or internet backhaul.
+- **Supported Patrol Terminals**: Interoperates with off-grid field ranger hardware including Seeed SenseCAP T1000-E trackers, Heltec LoRa Mesh nodes, and custom ESP32 transceivers.
+- **NodeDB Mesh Discovery**: Maintains dynamic neighbor tables, multi-hop routing paths, hop counts, and radio SNR metrics.
+- **Telemetry & GPS Decoding**: Handles fixed-point `1e7` coordinate conversions (preserving valid zero coordinates and avoiding boolean false values in battery metrics) alongside short emergency broadcast messages.
+- **Hardware RF ACK Validation**: Captures link-layer RF acknowledgement frames transmitted by remote mesh radios to verify physical delivery of critical alerts.
+
+### 3. Two-Phase Physical Control State Machine Engine
+- **No Optimistic False-Success**: Critical operations (e.g., activating high-volume drainage pumps, triggering ventilation shutters, or sounding sirens) require physical verification before marking the action as successful.
+- **Three-Stage Closed Loop**:
+  - `SENT`: Outbound command payload validated and dispatched from the edge gateway onto the physical communication channel.
+  - `DELIVERED`: Remote transceiver signals link-layer delivery confirmation (via Meshtastic RF ACK or bus echo).
+  - `APPLIED`: Actuator auxiliary feedback pin / contact closure is read back through hardware GPIO or Modbus coil confirmation.
+- **Single-Flight In-Flight Mutex**: Enforces a strict mutex on each target channel (only one in-flight command allowed per actuator pin) to prevent race conditions and command queue thrashing.
+- **Monotonic Timeout Escalation**: Operates a monotonic clock-driven watchdog (`time.monotonic()`); if contact closure is not confirmed within the configured window, state escalates to `statusUnknown`.
+- **SQLite WAL Audit Trail**: Every command transition, operator ID, target pin, timestamp, and final disposition is committed to an append-only SQLite WAL database on the gateway, preventing replay attacks and ensuring post-incident forensic traceability.
+
+### 4. Pluggable Storage Sinks
+- **Dynamic Engine Switching**: Configured via the `STORAGE_BACKEND` environment variable on the edge gateway without modifying application code:
+  - `none`: Pure in-memory streaming mode. Sensor metrics and control events are broadcast directly to MQTT and WebSocket clients with minimal memory overhead, ideal for resource-constrained edge SBCs.
+  - `sqlite`: Local circular buffer with Write-Ahead Logging (WAL). Retains a rolling window of telemetry (e.g., 24h/48h) with automatic partition age-off, surviving power cuts and maintaining offline trend charts.
+  - `tdengine`: Enterprise-grade, high-throughput time-series database cluster integration for multi-station field deployments and historical analysis.
+- **Adaptive Frontend Rendering**: The cockpit automatically senses the active storage sink, displaying real-time stream indicators or populating multi-day trend graphs accordingly.
+
+### 5. Normalized MQTT Data Bus Contract
+- **Loose Coupling**: Frontend presentation components and backend acquisition daemons interact strictly through normalized topic schemas:
+  - **Telemetry Stream Topic**: `agri_env/{station_id}/{sensor_type}/state` (e.g., `agri_env/station_alpha/soil/state`, `agri_env/station_alpha/weather/state`), carrying standardized JSON payloads:
+    ```json
+    {
+      "station_id": "station_alpha",
+      "sensor_type": "weather",
+      "timestamp": 1729411200000,
+      "metrics": {
+        "air_temperature": 24.5,
+        "air_humidity": 68.2,
+        "barometric_pressure": 1013.2,
+        "wind_speed": 3.4,
+        "wind_direction": 180,
+        "rainfall_hourly": 0.0
+      },
+      "status": "normal"
+    }
+    ```
+  - **Patrol Mesh Topic**: `msh/{mesh_channel}/node/{node_id}/telemetry` for live ranger coordinates, battery levels, and telemetry badges.
+  - **Control Bus Contract**: `control/command` for dispatching actions and `control/state` for streaming real-time transition updates (`SENT`, `DELIVERED`, `APPLIED`, `statusUnknown`).
 
 ---
 
@@ -87,6 +157,7 @@ python3 -m http.server 8080
 # Open in browser:
 # Default language: http://localhost:8080/index.html
 # English interface: http://localhost:8080/index.html?lang=en
+# Chinese interface: http://localhost:8080/index.html?lang=zh
 ```
 
 ### Method 2: Docker Container (Production Nginx)
@@ -119,6 +190,17 @@ npm run dev
 
 ---
 
+## Offline Map Configuration (PMTiles)
+
+The cockpit renders high-performance vector basemaps without external tile server dependencies via the PMTiles v3 format:
+
+1. **Prepare Vector Tiles**: Generate or download the target area `.pmtiles` vector archive (using tools such as Tippecanoe, Planetiler, or extraction scripts).
+2. **Directory Placement**: Place the `.pmtiles` archive into the `uploads/pmtiles/` directory (e.g., `uploads/pmtiles/site.pmtiles`).
+3. **HTTP 206 Range Verification**: In production, `nginx.conf` is preconfigured to provide `Accept-Ranges bytes` response headers and disallow gzip compression for `.pmtiles` files to guarantee byte-offset fidelity.
+4. **Magic Byte Check & Fallback**: The client-side map component (`src/components/OfflineMapView.js`) inspects the initial 2-byte header magic sequence (`0x4D50` / ASCII `'PM'`) via an HTTP Range preflight check. If the archive is missing or inaccessible, the map gracefully falls back to public OpenStreetMap tiles (if network is present) or displays a tabular marker fallback view.
+
+---
+
 ## Industry Examples
 
 This repository includes a fully functional, self-contained reference implementation:
@@ -136,8 +218,9 @@ This repository includes a fully functional, self-contained reference implementa
 | :--- | :--- | :--- |
 | **Edge Gateways** | Seeed reComputer R1000 / R1100 / R12, Raspberry Pi 4 / 5, CM4 Industrial Host | Gateway runtime, Mosquitto MQTT broker, SQLite WAL audit logging, PMTiles static file serving |
 | **Sensing Nodes** | SenseCAP S2100 series (Soil Moisture/EC, Temp/RH, 8-in-1 Weather Station) | Farmland microclimate and physical hazard sensing over RS485 / LoRaWAN |
-| **Field Patrol** | SenseCAP T1000-E Tracker, Heltec LoRa Mesh transceivers | Off-grid field ranger telemetry, GPS location reporting, and RF ACK confirmation |
+| **Field Patrol** | SenseCAP T1000-E Tracker, Heltec LoRa Mesh transceivers, ESP32 LoRa nodes | Off-grid field ranger telemetry, GPS location reporting, and RF ACK confirmation |
 | **Protocol Support** | SenseCAP Measurement Protocol, LoRaWAN, Meshtastic LoRa RF, MQTT, PMTiles v3 | Normalized 6-byte sensor decoding, mesh RF ACK validation, HTTP 206 partial content streaming |
+| **Actuator Control** | Industrial Relays, Modbus Coils, GPIO Relay Boards | Two-phase control execution with physical contact readback confirmation |
 
 ---
 
@@ -147,7 +230,8 @@ This repository includes a fully functional, self-contained reference implementa
 emergency-response-cockpit/
 ├── Dockerfile                     # Production Nginx container definition
 ├── LICENSE                        # MIT License
-├── README.md                      # Cockpit documentation and developer guide
+├── README.md                      # English documentation and architecture guide
+├── README.zh-CN.md                # 简体中文完整文档与网关协同架构指南
 ├── index.html                     # Application entry point with SenseCraft AppShell layout
 ├── nginx.conf                     # Nginx server configuration with HTTP 206 Range support
 ├── package.json                   # Project metadata and development dependencies
@@ -176,49 +260,7 @@ emergency-response-cockpit/
 
 ---
 
-## 中文导读
+## License & References
 
-### 核心特性摘要
-
-SenseCraft Emergency Response Cockpit 是一个面向应急响应、防灾减灾与离网作业现场的单一开箱即用驾驶舱前端模板。
-
-1. **SenseCraft UI 视觉语言**：严格遵循 `@suharvest/ui-kit` 设计 Tokens（主色 `--sc-color-primary: #8CC020`、背景色 `--sc-color-bg-layout: #f7fbf0`），内置 `normal`（绿）、`warning`（黄）、`danger`（红）、`disabled`（灰）四态指标规范，支持中英双语切换。
-2. **PMTiles 离线矢量地图**：通过 `protomaps-leaflet` 对本地单文件 `.pmtiles` 发起 HTTP 206 范围请求（HTTP Range Request），彻底摆脱外部 GIS 或公网瓦片依赖，断网下支持缩放与标记渲染，并具备在线 OSM 平滑回退能力。
-3. **两段式物理控制状态机**：针对防灾与工业继电器控制杜绝假“成功”。从下发到确认经历 `SENT`（本地网关已下发） -> `DELIVERED`（远端 Meshtastic RF 收到 ACK） -> `APPLIED`（硬件触点状态回读闭环）。若超时未收到回读，自动转入 `statusUnknown` 告警态，并在网关端写入 SQLite WAL 审计记录。
-4. **时序存储解耦**：适配边缘网关的 `STORAGE_BACKEND` 配置（`none` 纯流式透传 / `sqlite` 本地环形存储 / `tdengine` 集中时序库）。
-5. **零重量级框架开箱即用**：采用原生 ES 模块与纯 CSS，无打包强依赖，几十 MB 内存开销即可在边缘工控机稳定运行。
-
-### 快速上手指南
-
-- **方式 1：Python 静态文件服务（零构建，秒级拉起）**
-  ```bash
-  python3 -m http.server 8080
-  # 访问 http://localhost:8080/index.html
-  ```
-- **方式 2：Docker 容器部署（内置 Nginx 生产配置）**
-  ```bash
-  docker build -t emergency-response-cockpit .
-  docker run -d -p 8080:80 \
-    -v $(pwd)/uploads/pmtiles:/usr/share/nginx/html/uploads/pmtiles:ro \
-    --name emergency-cockpit emergency-response-cockpit
-  ```
-- **方式 3：Vite 本地开发**
-  ```bash
-  npm install
-  npm run dev
-  ```
-
-### 离线地图配置指引
-
-1. 准备目标区域的 `.pmtiles` 矢量切片文件（可通过 Tippecanoe 或 Planetiler 生成）；
-2. 将文件保存至 `uploads/pmtiles/` 目录（例如 `uploads/pmtiles/site.pmtiles`）；
-3. 生产环境中，`nginx.conf` 已默认配置针对 `.pmtiles` 的 `Accept-Ranges bytes` 响应头并关闭 gzip，以确保字节偏移严格准确；
-4. 前端组件 `src/components/OfflineMapView.js` 会在加载前校验魔数 `0x4D50`，若文件不可用则自动回退至在线 OpenStreetMap 或测点信息卡片列表。
-
----
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-For architecture designs and solution handoff details, refer to [docs/esg-emergency-solution-handoff.md](docs/esg-emergency-solution-handoff.md).
+- This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- For ESG and disaster resilience solution design principles, cross-repository integrations, and business mapping, refer to [docs/esg-emergency-solution-handoff.md](docs/esg-emergency-solution-handoff.md).
